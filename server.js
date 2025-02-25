@@ -37,6 +37,11 @@ const transporter = nodemailer.createTransport({
 // Mock Database (Replace with real DB later)
 const usersDB = new Map();
 
+// Root Endpoint
+app.get('/', (req, res) => {
+  res.send('Lifelike Backend is Running');
+});
+
 // Signup Endpoint
 app.post('/signup', async (req, res) => {
   const { email, password } = req.body;
