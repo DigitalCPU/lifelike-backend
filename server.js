@@ -15,6 +15,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // Ensures form-data is handled correctly
 app.use(cors());
 
 // Cloudinary Setup (For Profile Pictures)
@@ -45,21 +46,31 @@ app.get('/', (req, res) => {
 // Signup Endpoint
 app.post('/signup', async (req, res) => {
   const { email, password } = req.body;
-  if (usersDB.has(email)) return res.status(400).json({ message: 'Email already exists' });
+  
+  console.log(`Signup request received for: ${email}`);
+
+  if (usersDB.has(email)) {
+    console.log(`User already exists: ${email}`);
+    return res.status(400).json({ message: 'Email already exists' });
+  }
 
   const hashedPassword = await bcrypt.hash(password, 10);
   const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '1h' });
-  
+
   usersDB.set(email, { email, password: hashedPassword, verified: false });
-  
-  const verificationLink = `https://your-backend-url/verify?token=${token}`;
+
+  console.log(`User stored in database: ${JSON.stringify(usersDB.get(email))}`);
+
+  const verificationLink = `https://lifelike-backend.onrender.com/verify?token=${token}`;
   await transporter.sendMail({
     from: process.env.BREVO_EMAIL,
     to: email,
     subject: 'Verify Your Email',
     text: `Click the link to verify your account: ${verificationLink}`,
   });
-  
+
+  console.log(`Verification email sent to: ${email}`);
+
   res.json({ message: 'Signup successful. Check your email to verify.' });
 });
 
