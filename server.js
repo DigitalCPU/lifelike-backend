@@ -44,12 +44,6 @@ app.get('/', (req, res) => {
   res.send('Lifelike Backend is Running');
 });
 
-// Debugging Test Route
-app.post('/test', (req, res) => {
-  console.log('Test route received a request!');
-  res.json({ message: 'Test route is working!' });
-});
-
 // Signup Endpoint
 app.post('/signup', async (req, res) => {
   try {
@@ -86,70 +80,6 @@ app.post('/signup', async (req, res) => {
   } catch (error) {
     console.error('Signup error:', error);
     res.status(500).json({ message: 'Signup failed' });
-  }
-});
-
-// Email Verification Endpoint
-app.get('/verify', async (req, res) => {
-  try {
-    const { token } = req.query;
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    if (!usersDB.has(decoded.email)) return res.status(400).json({ message: 'User not found' });
-
-    usersDB.get(decoded.email).verified = true;
-    res.json({ message: 'Email verified successfully!' });
-  } catch (error) {
-    res.status(400).json({ message: 'Invalid or expired token' });
-  }
-});
-
-// Login Endpoint
-app.post('/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    console.log(`Login attempt for: ${email}`);
-
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password are required' });
-    }
-
-    const user = usersDB.get(email);
-    if (!user || !user.verified) {
-      console.log(`User not found or not verified: ${email}`);
-      return res.status(400).json({ message: 'User not found or not verified' });
-    }
-
-    const passwordMatch = await bcrypt.compare(password, user.password);
-    if (!passwordMatch) {
-      return res.status(401).json({ message: 'Invalid password' });
-    }
-
-    const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '7d' });
-    console.log(`Login successful for: ${email}`);
-    res.json({ message: 'Login successful', token });
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ message: 'Login failed' });
-  }
-});
-
-// Profile Picture Upload Endpoint
-const upload = multer({ storage: multer.memoryStorage() });
-
-app.post('/upload', upload.single('image'), async (req, res) => {
-  try {
-    const file = req.file;
-    if (!file) return res.status(400).json({ message: 'No file uploaded' });
-
-    cloudinary.uploader.upload_stream({ resource_type: 'image' }, (error, result) => {
-      if (error) return res.status(500).json({ message: 'Upload failed', error: error.message });
-
-      console.log(`Image uploaded: ${result.secure_url}`);
-      res.json({ imageUrl: result.secure_url });
-    }).end(file.buffer);
-  } catch (error) {
-    console.error('Upload error:', error);
-    res.status(500).json({ message: 'Upload error', error: error.message });
   }
 });
 
