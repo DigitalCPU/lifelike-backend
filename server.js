@@ -14,8 +14,9 @@ const cloudinary = require('cloudinary').v2;
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true })); // Ensures form-data is handled correctly
+// Middleware
+app.use(express.json()); 
+app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 
 // Cloudinary Setup (For Profile Pictures)
@@ -43,35 +44,49 @@ app.get('/', (req, res) => {
   res.send('Lifelike Backend is Running');
 });
 
+// Debugging Test Route
+app.post('/test', (req, res) => {
+  console.log('Test route received a request!');
+  res.json({ message: 'Test route is working!' });
+});
+
 // Signup Endpoint
 app.post('/signup', async (req, res) => {
-  const { email, password } = req.body;
-  
-  console.log(`Signup request received for: ${email}`);
+  try {
+    const { email, password } = req.body;
+    console.log(`Signup request received for: ${email}`);
 
-  if (usersDB.has(email)) {
-    console.log(`User already exists: ${email}`);
-    return res.status(400).json({ message: 'Email already exists' });
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
+    }
+
+    if (usersDB.has(email)) {
+      console.log(`User already exists: ${email}`);
+      return res.status(400).json({ message: 'Email already exists' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+    usersDB.set(email, { email, password: hashedPassword, verified: false });
+
+    console.log(`User stored in database: ${JSON.stringify(usersDB.get(email))}`);
+
+    const verificationLink = `https://lifelike-backend.onrender.com/verify?token=${token}`;
+    await transporter.sendMail({
+      from: process.env.BREVO_EMAIL,
+      to: email,
+      subject: 'Verify Your Email',
+      text: `Click the link to verify your account: ${verificationLink}`,
+    });
+
+    console.log(`Verification email sent to: ${email}`);
+
+    res.json({ message: 'Signup successful. Check your email to verify.' });
+  } catch (error) {
+    console.error('Signup error:', error);
+    res.status(500).json({ message: 'Signup failed' });
   }
-
-  const hashedPassword = await bcrypt.hash(password, 10);
-  const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '1h' });
-
-  usersDB.set(email, { email, password: hashedPassword, verified: false });
-
-  console.log(`User stored in database: ${JSON.stringify(usersDB.get(email))}`);
-
-  const verificationLink = `https://lifelike-backend.onrender.com/verify?token=${token}`;
-  await transporter.sendMail({
-    from: process.env.BREVO_EMAIL,
-    to: email,
-    subject: 'Verify Your Email',
-    text: `Click the link to verify your account: ${verificationLink}`,
-  });
-
-  console.log(`Verification email sent to: ${email}`);
-
-  res.json({ message: 'Signup successful. Check your email to verify.' });
 });
 
 // Email Verification Endpoint
@@ -80,7 +95,7 @@ app.get('/verify', async (req, res) => {
     const { token } = req.query;
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     if (!usersDB.has(decoded.email)) return res.status(400).json({ message: 'User not found' });
-    
+
     usersDB.get(decoded.email).verified = true;
     res.json({ message: 'Email verified successfully!' });
   } catch (error) {
@@ -90,30 +105,51 @@ app.get('/verify', async (req, res) => {
 
 // Login Endpoint
 app.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-  const user = usersDB.get(email);
-  if (!user || !user.verified) return res.status(400).json({ message: 'User not found or not verified' });
-  
-  const passwordMatch = await bcrypt.compare(password, user.password);
-  if (!passwordMatch) return res.status(401).json({ message: 'Invalid password' });
-  
-  const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '7d' });
-  res.json({ message: 'Login successful', token });
+  try {
+    const { email, password } = req.body;
+    console.log(`Login attempt for: ${email}`);
+
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
+    }
+
+    const user = usersDB.get(email);
+    if (!user || !user.verified) {
+      console.log(`User not found or not verified: ${email}`);
+      return res.status(400).json({ message: 'User not found or not verified' });
+    }
+
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ message: 'Invalid password' });
+    }
+
+    const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    console.log(`Login successful for: ${email}`);
+    res.json({ message: 'Login successful', token });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ message: 'Login failed' });
+  }
 });
 
 // Profile Picture Upload Endpoint
 const upload = multer({ storage: multer.memoryStorage() });
+
 app.post('/upload', upload.single('image'), async (req, res) => {
   try {
     const file = req.file;
     if (!file) return res.status(400).json({ message: 'No file uploaded' });
-    
+
     cloudinary.uploader.upload_stream({ resource_type: 'image' }, (error, result) => {
-      if (error) return res.status(500).json({ message: 'Upload failed' });
+      if (error) return res.status(500).json({ message: 'Upload failed', error: error.message });
+
+      console.log(`Image uploaded: ${result.secure_url}`);
       res.json({ imageUrl: result.secure_url });
     }).end(file.buffer);
   } catch (error) {
-    res.status(500).json({ message: 'Upload error' });
+    console.error('Upload error:', error);
+    res.status(500).json({ message: 'Upload error', error: error.message });
   }
 });
 
